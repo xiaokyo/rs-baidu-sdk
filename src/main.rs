@@ -6,7 +6,7 @@ use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut pan = Pan::new();
+    let pan = Pan::new();
     // pan.get_device_code().await;
 
     // loop {
@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // pan.get_file_list().await;
     // pan.get_capacity().await;
 
-    pan.upload_file("BaiduNetdisk.dmg").await;
+    pan.upload_file("WeGameMiniLoader.std.3.08.23.1122.exe").await;
 
     Ok(())
 }

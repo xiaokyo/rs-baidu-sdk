@@ -1,7 +1,6 @@
-use std::{error::Error, io::Read};
+use std::{collections::HashMap, io::Read};
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use crate::lib::cmd::open_url;
 
@@ -95,7 +94,7 @@ pub struct PanCapacity {
     total: u64,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 pub struct Md5Chunks {
     chunk: Vec<u8>,
     md5: String,
@@ -276,16 +275,17 @@ impl Pan {
             path: Option<String>,
         }
 
-        let mut md = file.metadata()?;
+        let md = file.metadata()?;
         let file_size = md.len();
         let file_type = md.file_type();
         let isdir = match file_type.is_dir() {
             true => "1",
             false => "0",
         };
-        let encode_path = self.url_encode("path", file_path);
+
+        let remote_path = self.get_remote_path(file_path);
+        let encode_path = self.url_encode("path", &remote_path);
         let mut list_of_chunks = Vec::new();
-        // let mut list_of_chunkMd5 = Vec::new();
 
         let chunk_size = 1024 * 1024 * 4;
 
@@ -311,13 +311,13 @@ impl Pan {
         }
 
         let md5_str = &list_of_chunks
-            .into_iter()
+            .iter()
             .map(|x| x.md5.clone())
             .collect::<Vec<String>>();
         let md5_text = serde_json::to_string(md5_str).unwrap();
         println!("{:?}", md5_text);
 
-        let url = format!(
+        let pre_create_url = format!(
             "https://pan.baidu.com/rest/2.0/xpan/file?method=precreate&access_token={}&{}&size={}&block_list={}&autoinit=1&isdir={}",
             self.access_token.access_token,
             encode_path,
@@ -325,12 +325,82 @@ impl Pan {
             md5_text,
             isdir
         );
-        println!("{}", url);
-        let client = reqwest::Client::new();
-        let result: PreCreateResponse =
-            client.post(url).send().await.unwrap().json().await.unwrap();
+        println!("{}", pre_create_url);
 
-        println!("{:#?}", result);
+        let precreate_client = reqwest::Client::new();
+        let precreate_result: PreCreateResponse = precreate_client
+            .post(pre_create_url)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+
+        println!("{:#?}", precreate_result);
+
+        if precreate_result.return_type == 2 {
+            // 提前返回， 表示已存在
+            let info = precreate_result.info;
+            match info {
+                None => {}
+                Some(info) => {
+                    println!("已存在文件： {}", info.path);
+                }
+            }
+            return Ok(());
+        }
+
+        let uploadid = match precreate_result.uploadid {
+            Some(uploadid) => uploadid,
+            None => {
+                panic!("uploadid 为空");
+            }
+        };
+
+        #[derive(Serialize, Deserialize, Debug)]
+        struct UploadResponse {
+            errno: u64,
+            md5: Option<String>,
+            request_id: Option<u64>,
+        }
+
+        let mut i = 0_usize;
+        let len = list_of_chunks.len();
+        loop {
+            if i > len {
+                break;
+            };
+            let c = &list_of_chunks[i];
+            // let chars = c.chunk.iter().map(|c| *c as char).collect::<Vec<_>>();
+            // let chars = String::from_utf8(c.chunk.clone()).expect("from_utf8 failed").chars().collect::<Vec<char>>();
+            let chars = serde_json::to_string(&c.chunk).unwrap();
+            type UploadUrl = String;
+            let upload_url:UploadUrl = format!(
+                "https://pan.baidu.com/rest/2.0/pcs/superfile2?method=upload&access_token={}&type=tmpfile&{}&uploadid={}&partseq={}",
+                self.access_token.access_token,
+                encode_path,
+                uploadid,
+                i,
+            );
+            println!("{}", upload_url);
+            let mut body = HashMap::new();
+            body.insert("file", chars);
+
+            let upload_client = reqwest::Client::new();
+            let upload_result: UploadResponse = upload_client
+                .post(upload_url)
+                .json(&body)
+                .send()
+                .await
+                .unwrap()
+                .json()
+                .await
+                .unwrap();
+
+            println!("{:?}", upload_result);
+            i += 1;
+        }
 
         Ok(())
     }
@@ -349,6 +419,24 @@ impl Pan {
         form_urlencoded::Serializer::new(String::new())
             .append_pair(key, value)
             .finish()
+    }
+
+    /**
+     * 远程目录
+     */
+    pub fn get_remote_path(&self, file_path: &str) -> String {
+        let split_path = file_path.split("/").collect::<Vec<&str>>();
+        let file_name = split_path.last();
+
+        let remote_root = "/app/xiaokyo/";
+        match file_name {
+            Some(file_name) => {
+                format!("{}{}", remote_root, file_name)
+            }
+            _ => {
+                format!("{}{}", remote_root, "cache")
+            }
+        }
     }
 }
 
@@ -380,5 +468,12 @@ mod test {
         let pan = super::Pan::new();
         let result = pan.url_encode("path", "/BaiduNetdisk.dmg");
         println!("{}", result);
+    }
+
+    #[test]
+    fn split_file_path() {
+        let pan = super::Pan::new();
+        let path = pan.get_remote_path("/xixi/xixi/xixi/xixi.png");
+        println!("{}", path);
     }
 }
