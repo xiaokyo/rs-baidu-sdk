@@ -372,9 +372,9 @@ impl Pan {
                 break;
             };
             let c = &list_of_chunks[i];
-            // let chars = c.chunk.iter().map(|c| *c as char).collect::<Vec<_>>();
+            let chars = c.chunk.iter().map(|c| *c as char).collect::<Vec<_>>();
             // let chars = String::from_utf8(c.chunk.clone()).expect("from_utf8 failed").chars().collect::<Vec<char>>();
-            let chars = serde_json::to_string(&c.chunk).unwrap();
+            // let chars = serde_json::to_string(&c.chunk).unwrap();
             type UploadUrl = String;
             let upload_url:UploadUrl = format!(
                 "https://d.pcs.baidu.com/rest/2.0/pcs/superfile2?method=upload&access_token={}&type=tmpfile&{}&uploadid={}&partseq={}",
@@ -384,17 +384,19 @@ impl Pan {
                 i,
             );
             println!("{}", upload_url);
-            let mut body = HashMap::new();
-            body.insert("file", chars);
+            // let mut body = HashMap::new();
+            // body.insert("file", chars);
 
+            #[derive(Serialize, Deserialize, Debug)]
+            struct UploadBody {
+                file: Vec<char>,
+            }
+
+            let upload_body = UploadBody { file: chars };
             let upload_client = reqwest::Client::new();
-            let upload_result = upload_client
-                .post(upload_url)
-                .json(&body)
-                .send()
-                .await
-                .unwrap();
-
+            let upload_request_builder = upload_client.post(upload_url).json(&upload_body);
+            println!("{:#?}", upload_request_builder);
+            let upload_result = upload_request_builder.send().await.unwrap();
             // let upload_result_json = upload_result.json().await.unwrap();
 
             println!("{:#?}", upload_result);
