@@ -377,7 +377,7 @@ impl Pan {
             let chars = serde_json::to_string(&c.chunk).unwrap();
             type UploadUrl = String;
             let upload_url:UploadUrl = format!(
-                "https://pan.baidu.com/rest/2.0/pcs/superfile2?method=upload&access_token={}&type=tmpfile&{}&uploadid={}&partseq={}",
+                "https://d.pcs.baidu.com/rest/2.0/pcs/superfile2?method=upload&access_token={}&type=tmpfile&{}&uploadid={}&partseq={}",
                 self.access_token.access_token,
                 encode_path,
                 uploadid,
@@ -388,17 +388,16 @@ impl Pan {
             body.insert("file", chars);
 
             let upload_client = reqwest::Client::new();
-            let upload_result: UploadResponse = upload_client
+            let upload_result = upload_client
                 .post(upload_url)
                 .json(&body)
                 .send()
                 .await
-                .unwrap()
-                .json()
-                .await
                 .unwrap();
 
-            println!("{:?}", upload_result);
+            // let upload_result_json = upload_result.json().await.unwrap();
+
+            println!("{:#?}", upload_result);
             i += 1;
         }
 
@@ -428,7 +427,7 @@ impl Pan {
         let split_path = file_path.split("/").collect::<Vec<&str>>();
         let file_name = split_path.last();
 
-        let remote_root = "/app/xiaokyo/";
+        let remote_root = "/apps/xiaok/";
         match file_name {
             Some(file_name) => {
                 format!("{}{}", remote_root, file_name)
