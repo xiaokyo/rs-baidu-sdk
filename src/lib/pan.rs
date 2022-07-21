@@ -1,6 +1,6 @@
-use std::{collections::HashMap, io::Read};
-
+use reqwest::{multipart, Client, Response};
 use serde::{Deserialize, Serialize};
+use std::{collections::HashMap, io::Read};
 
 use crate::lib::cmd::open_url;
 
@@ -283,7 +283,7 @@ impl Pan {
             false => "0",
         };
 
-        let remote_path = self.get_remote_path(file_path);
+        let (file_name, remote_path) = self.get_remote_path(file_path);
         let encode_path = self.url_encode("path", &remote_path);
         let mut list_of_chunks = Vec::new();
 
@@ -372,9 +372,11 @@ impl Pan {
                 break;
             };
             let c = &list_of_chunks[i];
-            let chars = c.chunk.iter().map(|c| *c as char).collect::<Vec<_>>();
+            // let chars = c.chunk.iter().map(|c| *c as char).collect::<Vec<_>>();
             // let chars = String::from_utf8(c.chunk.clone()).expect("from_utf8 failed").chars().collect::<Vec<char>>();
             // let chars = serde_json::to_string(&c.chunk).unwrap();
+
+            // println!("{:?}", chars);
             type UploadUrl = String;
             let upload_url:UploadUrl = format!(
                 "https://d.pcs.baidu.com/rest/2.0/pcs/superfile2?method=upload&access_token={}&type=tmpfile&{}&uploadid={}&partseq={}",
@@ -384,22 +386,16 @@ impl Pan {
                 i,
             );
             println!("{}", upload_url);
-            // let mut body = HashMap::new();
-            // body.insert("file", chars);
 
-            #[derive(Serialize, Deserialize, Debug)]
-            struct UploadBody {
-                file: Vec<char>,
-            }
-
-            let upload_body = UploadBody { file: chars };
             let upload_client = reqwest::Client::new();
-            let upload_request_builder = upload_client.post(upload_url).json(&upload_body);
-            println!("{:#?}", upload_request_builder);
-            let upload_result = upload_request_builder.send().await.unwrap();
-            // let upload_result_json = upload_result.json().await.unwrap();
+            let form_data =
+                multipart::Form::new().part("file", multipart::Part::stream(c.chunk));
 
-            println!("{:#?}", upload_result);
+            let upload_request_builder = upload_client.post(upload_url).multipart(form_data);
+            let upload_result = upload_request_builder.send().await.unwrap();
+            // // let upload_result_json = upload_result.json().await.unwrap();
+
+            println!("{:#?}", upload_result.text().await.unwrap());
             i += 1;
         }
 
@@ -425,18 +421,17 @@ impl Pan {
     /**
      * 远程目录
      */
-    pub fn get_remote_path(&self, file_path: &str) -> String {
+    pub fn get_remote_path(&self, file_path: &str) -> (String, String) {
         let split_path = file_path.split("/").collect::<Vec<&str>>();
         let file_name = split_path.last();
 
         let remote_root = "/apps/xiaok/";
         match file_name {
-            Some(file_name) => {
-                format!("{}{}", remote_root, file_name)
-            }
-            _ => {
-                format!("{}{}", remote_root, "cache")
-            }
+            Some(file_name) => (
+                String::from(*file_name),
+                format!("{}{}", remote_root, file_name),
+            ),
+            _ => (String::from("cache"), format!("{}{}", remote_root, "cache")),
         }
     }
 }
@@ -475,6 +470,6 @@ mod test {
     fn split_file_path() {
         let pan = super::Pan::new();
         let path = pan.get_remote_path("/xixi/xixi/xixi/xixi.png");
-        println!("{}", path);
+        println!("{:?}", path);
     }
 }
