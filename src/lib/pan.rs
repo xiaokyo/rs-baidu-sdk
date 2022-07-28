@@ -1,7 +1,7 @@
 use reqwest::{multipart, Client, Response};
 use serde::{Deserialize, Serialize};
 use serde_json::Number;
-use std::{borrow::Cow, collections::HashMap, io::Read};
+use std::{borrow::{Cow, BorrowMut}, collections::HashMap, io::Read};
 
 use crate::lib::cmd::open_url;
 
@@ -382,17 +382,28 @@ impl Pan {
 
         let mut i = 0_usize;
         let len = list_of_chunks.len();
-        loop {
-            if i >= len {
-                break;
-            };
-            let c = list_of_chunks[i].clone();
+
+        async fn upload_chunk(
+            list: &Vec<Md5Chunks>,
+            i: usize,
+            token: &str,
+            path: &str,
+            uploadid: &str,
+            file_name: &str,
+            len: usize,
+            remote_path: &str,
+            isdir: &str,
+            file_size: u64,
+            md5_arr_str: String,
+            uploaded: &mut u32,
+        ) {
+            let c = list[i].clone();
 
             type UploadUrl = String;
             let upload_url:UploadUrl = format!(
                 "https://d.pcs.baidu.com/rest/2.0/pcs/superfile2?method=upload&access_token={}&type=tmpfile&{}&uploadid={}&partseq={}",
-                self.access_token.access_token,
-                encode_path,
+                token,
+                path,
                 uploadid,
                 i,
             );
@@ -409,56 +420,67 @@ impl Pan {
             let upload_result_json = upload_result.json::<UploadResponse>().await.unwrap();
 
             println!("{:?}", upload_result_json);
+            *uploaded += 1;
+            if *uploaded >= u32::try_from(len).unwrap() {
+                let complete_url = format!(
+                    "https://pan.baidu.com/rest/2.0/xpan/file?method=create&access_token={}",
+                    token,
+                );
+
+                let complete_client = reqwest::Client::new();
+                let complete_request_builder = complete_client.post(complete_url);
+
+                let string_block_list = format!("[{}]", md5_arr_str);
+                let block_list = string_block_list.as_str();
+
+                let string_size = file_size.to_string();
+                let size = string_size.as_str();
+                let create_body = [
+                    ("path", remote_path.clone()),
+                    ("isdir", isdir),
+                    ("size", size),
+                    ("block_list", block_list),
+                    ("uploadid", uploadid),
+                ];
+
+                println!("{:#?}", create_body);
+                let complete_result = complete_request_builder
+                    .form(&create_body)
+                    .send()
+                    .await
+                    .unwrap()
+                    .text()
+                    .await
+                    .unwrap();
+
+                println!("{:#?}", complete_result);
+            };
+        }
+
+        let mut uploaded = 0_u32;
+        loop {
+            if i >= len {
+                break;
+            };
+
+            upload_chunk(
+                &list_of_chunks,
+                i,
+                &self.access_token.access_token,
+                &encode_path,
+                &uploadid,
+                &file_name,
+                len,
+                &remote_path,
+                &isdir,
+                file_size.clone(),
+                md5_arr_str.clone(),
+                &mut uploaded,
+            ).await;
+
             i += 1;
         }
 
-        let complete_url = format!(
-            "https://pan.baidu.com/rest/2.0/xpan/file?method=create&access_token={}",
-            self.access_token.access_token,
-        );
-
-        let complete_client = reqwest::Client::new();
-        let complete_request_builder = complete_client.post(complete_url);
-
-        // 创建一个json的body
-        // let mut create_body = serde_json::Map::new();
-        // create_body.insert(
-        //     "path".to_string(),
-        //     serde_json::Value::String(remote_path.clone()),
-        // );
-        // create_body.insert(
-        //     "isdir".to_string(),
-        //     serde_json::Value::String(isdir.to_string()),
-        // );
-        // create_body.insert(
-        //     "size".to_string(),
-        //     serde_json::Value::String(file_size.to_string()),
-        // );
-        // create_body.insert(
-        //     "block_list".to_string(),
-        //     serde_json::to_vec(&md5_str).unwrap().into(),
-        // );
-        // create_body.insert("uploadid".to_string(), serde_json::Value::String(uploadid));
-
-        let create_body = [
-            ("path", remote_path.clone()),
-            ("isdir", isdir.parse().unwrap()),
-            ("size", file_size.to_string()),
-            ("block_list", format!("[{}]", md5_arr_str)),
-            ("uploadid", uploadid),
-        ];
-
-        println!("{:#?}", create_body);
-        let complete_result = complete_request_builder
-            .form(&create_body)
-            .send()
-            .await
-            .unwrap()
-            .text()
-            .await
-            .unwrap();
-
-        println!("{:#?}", complete_result);
         Ok(())
     }
 
