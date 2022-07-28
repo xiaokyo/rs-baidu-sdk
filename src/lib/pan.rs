@@ -1,6 +1,7 @@
 use reqwest::{multipart, Client, Response};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, io::Read};
+use serde_json::Number;
+use std::{borrow::Cow, collections::HashMap, io::Read};
 
 use crate::lib::cmd::open_url;
 
@@ -266,11 +267,11 @@ impl Pan {
 
         #[derive(Serialize, Deserialize, Debug)]
         struct PreCreateResponse {
-            return_type: u32,
-            errno: u32,
+            return_type: Option<u32>,
+            errno: Option<i32>,
             info: Option<CreateFileInfo>,
             block_list: Option<Vec<u32>>,
-            request_id: u64,
+            request_id: Option<u64>,
             uploadid: Option<String>,
             path: Option<String>,
         }
@@ -279,8 +280,8 @@ impl Pan {
         let file_size = md.len();
         let file_type = md.file_type();
         let isdir = match file_type.is_dir() {
-            true => "1",
-            false => "0",
+            true => "1".to_string(),
+            false => "0".to_string(),
         };
 
         let (file_name, remote_path) = self.get_remote_path(file_path);
@@ -310,36 +311,50 @@ impl Pan {
             }
         }
 
-        let md5_str = &list_of_chunks
-            .iter()
-            .map(|x| x.md5.clone())
-            .collect::<Vec<String>>();
-        let md5_text = serde_json::to_string(md5_str).unwrap();
-        println!("{:?}", md5_text);
+        let mut md5_arr_str = String::from("");
+        list_of_chunks.iter().enumerate().for_each(|(i, x)| {
+            match i {
+                0 => md5_arr_str.push_str(format!("\"{}\"", x.md5.clone()).as_str()),
+                _ => md5_arr_str.push_str(format!(", \"{}\"", x.md5.clone()).as_str()),
+            };
+        });
+
+        println!("{}", format!("[{}]", md5_arr_str));
 
         let pre_create_url = format!(
-            "https://pan.baidu.com/rest/2.0/xpan/file?method=precreate&access_token={}&{}&size={}&block_list={}&autoinit=1&isdir={}",
+            "https://pan.baidu.com/rest/2.0/xpan/file?method=precreate&access_token={}",
             self.access_token.access_token,
-            encode_path,
-            file_size,
-            md5_text,
-            isdir
         );
-        println!("{}", pre_create_url);
+
+        let pre_create_body = [
+            ("path", remote_path.clone()),
+            ("isdir", isdir.parse().unwrap()),
+            ("size", file_size.to_string()),
+            ("block_list", format!("[{}]", md5_arr_str)),
+            ("autoinit", String::from("1")),
+        ];
+
+        println!("{:#?}", pre_create_body);
 
         let precreate_client = reqwest::Client::new();
         let precreate_result: PreCreateResponse = precreate_client
             .post(pre_create_url)
+            .form(&pre_create_body)
             .send()
-            .await
-            .unwrap()
+            .await?
             .json()
-            .await
-            .unwrap();
+            .await?;
 
         println!("{:#?}", precreate_result);
 
-        if precreate_result.return_type == 2 {
+        error_panic(precreate_result.errno);
+
+        let return_type = match precreate_result.return_type {
+            Some(x) => x,
+            None => 0,
+        };
+
+        if return_type == 2 {
             // 提前返回， 表示已存在
             let info = precreate_result.info;
             match info {
@@ -360,7 +375,7 @@ impl Pan {
 
         #[derive(Serialize, Deserialize, Debug)]
         struct UploadResponse {
-            errno: u64,
+            errno: Option<u64>,
             md5: Option<String>,
             request_id: Option<u64>,
         }
@@ -368,15 +383,11 @@ impl Pan {
         let mut i = 0_usize;
         let len = list_of_chunks.len();
         loop {
-            if i > len {
+            if i >= len {
                 break;
             };
-            let c = &list_of_chunks[i];
-            // let chars = c.chunk.iter().map(|c| *c as char).collect::<Vec<_>>();
-            // let chars = String::from_utf8(c.chunk.clone()).expect("from_utf8 failed").chars().collect::<Vec<char>>();
-            // let chars = serde_json::to_string(&c.chunk).unwrap();
+            let c = list_of_chunks[i].clone();
 
-            // println!("{:?}", chars);
             type UploadUrl = String;
             let upload_url:UploadUrl = format!(
                 "https://d.pcs.baidu.com/rest/2.0/pcs/superfile2?method=upload&access_token={}&type=tmpfile&{}&uploadid={}&partseq={}",
@@ -388,17 +399,66 @@ impl Pan {
             println!("{}", upload_url);
 
             let upload_client = reqwest::Client::new();
-            let form_data =
-                multipart::Form::new().part("file", multipart::Part::stream(c.chunk));
+            let form_data = multipart::Form::new().part(
+                "file",
+                multipart::Part::bytes(c.chunk.clone()).file_name(format!("{}{}", i, file_name)),
+            );
 
             let upload_request_builder = upload_client.post(upload_url).multipart(form_data);
             let upload_result = upload_request_builder.send().await.unwrap();
-            // // let upload_result_json = upload_result.json().await.unwrap();
+            let upload_result_json = upload_result.json::<UploadResponse>().await.unwrap();
 
-            println!("{:#?}", upload_result.text().await.unwrap());
+            println!("{:?}", upload_result_json);
             i += 1;
         }
 
+        let complete_url = format!(
+            "https://pan.baidu.com/rest/2.0/xpan/file?method=create&access_token={}",
+            self.access_token.access_token,
+        );
+
+        let complete_client = reqwest::Client::new();
+        let complete_request_builder = complete_client.post(complete_url);
+
+        // 创建一个json的body
+        // let mut create_body = serde_json::Map::new();
+        // create_body.insert(
+        //     "path".to_string(),
+        //     serde_json::Value::String(remote_path.clone()),
+        // );
+        // create_body.insert(
+        //     "isdir".to_string(),
+        //     serde_json::Value::String(isdir.to_string()),
+        // );
+        // create_body.insert(
+        //     "size".to_string(),
+        //     serde_json::Value::String(file_size.to_string()),
+        // );
+        // create_body.insert(
+        //     "block_list".to_string(),
+        //     serde_json::to_vec(&md5_str).unwrap().into(),
+        // );
+        // create_body.insert("uploadid".to_string(), serde_json::Value::String(uploadid));
+
+        let create_body = [
+            ("path", remote_path.clone()),
+            ("isdir", isdir.parse().unwrap()),
+            ("size", file_size.to_string()),
+            ("block_list", format!("[{}]", md5_arr_str)),
+            ("uploadid", uploadid),
+        ];
+
+        println!("{:#?}", create_body);
+        let complete_result = complete_request_builder
+            .form(&create_body)
+            .send()
+            .await
+            .unwrap()
+            .text()
+            .await
+            .unwrap();
+
+        println!("{:#?}", complete_result);
         Ok(())
     }
 
@@ -471,5 +531,23 @@ mod test {
         let pan = super::Pan::new();
         let path = pan.get_remote_path("/xixi/xixi/xixi/xixi.png");
         println!("{:?}", path);
+    }
+}
+
+/**
+ * 错误对应信息
+ */
+fn error_panic(_errno: Option<i32>) {
+    match _errno {
+        Some(errno) => match errno {
+            0 => return,
+            2 => panic!("参数错误"),
+            111 => panic!("access token 失效"),
+            -6 => panic!("身份验证失败"),
+            6 => panic!("不允许接入用户数据"),
+            31034 => panic!("接口请求过于频繁，注意控制。"),
+            _ => {}
+        },
+        None => {}
     }
 }
