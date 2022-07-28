@@ -1,7 +1,8 @@
-use reqwest::{multipart, Client, Response};
+#![allow(dead_code)]
+
+use reqwest::multipart;
 use serde::{Deserialize, Serialize};
-use serde_json::Number;
-use std::{borrow::{Cow, BorrowMut}, collections::HashMap, io::Read};
+use std::io::Read;
 
 use crate::lib::cmd::open_url;
 
@@ -476,7 +477,8 @@ impl Pan {
                 file_size.clone(),
                 md5_arr_str.clone(),
                 &mut uploaded,
-            ).await;
+            )
+            .await;
 
             i += 1;
         }
