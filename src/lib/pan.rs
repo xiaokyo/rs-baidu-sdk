@@ -289,7 +289,8 @@ impl Pan {
         let encode_path = self.url_encode("path", &remote_path);
         let mut list_of_chunks = Vec::new();
 
-        let chunk_size = 1024 * 1024 * 4;
+        // 分块大小
+        let chunk_size = 1024 * 1024 * 16;
 
         loop {
             let mut chunk = Vec::with_capacity(chunk_size);
