@@ -2,3 +2,5 @@
 *.dmg
 *.exe
 *.jpg
+
+.DS_Store
