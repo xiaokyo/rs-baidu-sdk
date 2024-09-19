@@ -1,6 +1,8 @@
-mod lib;
+mod myth;
 
-use lib::pan::Pan;
+use std;
+
+use myth::pan::Pan;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,6 +21,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // pan.get_file_list().await;
     // pan.get_capacity().await;
 
-    pan.upload_file("WeGameMiniLoader.std.3.08.23.1122.exe").await.unwrap();
+    pan.upload_file("小困打卡小程序.xmind").await.unwrap();
     Ok(())
 }

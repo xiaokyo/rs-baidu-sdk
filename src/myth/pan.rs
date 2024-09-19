@@ -4,7 +4,7 @@ use reqwest::multipart;
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 
-use crate::lib::cmd::open_url;
+use crate::myth::cmd::open_url;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Pan {
@@ -118,7 +118,7 @@ impl Pan {
             },
             access_token: AccessToken {
                 expires_in: 0,
-                access_token: "126.00f95130de7bc0f9b30d450ccec52f40.YCjJewhvbzaS7hYvVUaSckwmoKH64BlrZJRfWcn.gaLbDA".to_string(),
+                access_token: "126.f6ada47ce7892144a2ed4871caec23b5.YBq4MK7wiqwe9zSAZJt7uoFPTajj32xuqqF4QVQ.qjeiKw".to_string(),
                 refresh_token: "127.1df467b0f2a657d39ac53cc6ca8f4ce2.YgzfaWGEDRKQIGVZ7Q4VsW80XnzCdJKHFUoYmHx.LD81CA".to_string(),
                 scope: "".to_string(),
                 session_key: "".to_string(),
@@ -289,7 +289,7 @@ impl Pan {
         let encode_path = self.url_encode("path", &remote_path);
         let mut list_of_chunks = Vec::new();
 
-        // 分块大小
+        // TODO: 分块大小 可根据会员信息区分调整, 最高32mb貌似
         let chunk_size = 1024 * 1024 * 16;
 
         loop {
@@ -438,7 +438,7 @@ impl Pan {
                 let string_size = file_size.to_string();
                 let size = string_size.as_str();
                 let create_body = [
-                    ("path", remote_path.clone()),
+                    ("path", remote_path),
                     ("isdir", isdir),
                     ("size", size),
                     ("block_list", block_list),
