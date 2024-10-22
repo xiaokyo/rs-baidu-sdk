@@ -118,8 +118,8 @@ impl Pan {
             },
             access_token: AccessToken {
                 expires_in: 0,
-                access_token: "126.f6ada47ce7892144a2ed4871caec23b5.YBq4MK7wiqwe9zSAZJt7uoFPTajj32xuqqF4QVQ.qjeiKw".to_string(),
-                refresh_token: "127.1df467b0f2a657d39ac53cc6ca8f4ce2.YgzfaWGEDRKQIGVZ7Q4VsW80XnzCdJKHFUoYmHx.LD81CA".to_string(),
+                access_token: "126.809ee423b44bfeb02f759856bca96c76.Ymidm9xZu1X4HzVyKzpg1ylN81j_RRyeCKwzA5Q.cwzI8g".to_string(),
+                refresh_token: "127.32d5b013719061349dc6cd4dbb291045.Y7eqt_hiISiASfOwoGIW_b7uVJSZi432YqZpWcO.RNzCzQ".to_string(),
                 scope: "".to_string(),
                 session_key: "".to_string(),
                 session_secret: "".to_string(),
@@ -423,10 +423,9 @@ impl Pan {
 
             println!("{:?}", upload_result_json);
             *uploaded += 1;
-            if *uploaded >= u32::try_from(len).unwrap() {
+            if *uploaded >= len as u32 {
                 let complete_url = format!(
-                    "https://pan.baidu.com/rest/2.0/xpan/file?method=create&access_token={}",
-                    token,
+                    "https://pan.baidu.com/rest/2.0/xpan/file?method=create&access_token={token}"
                 );
 
                 let complete_client = reqwest::Client::new();

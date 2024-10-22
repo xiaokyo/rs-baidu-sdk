@@ -1,13 +1,13 @@
 mod myth;
 
-use std;
+use std::{self, thread, time::Duration};
 
 use myth::pan::Pan;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let pan = Pan::new();
-    // pan.get_device_code().await;
+    let mut pan = Pan::new();
+    pan.get_device_code().await;
 
     // loop {
     //     thread::sleep(Duration::from_secs(4));
